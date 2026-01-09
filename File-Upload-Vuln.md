@@ -89,13 +89,56 @@ This script enables you to pass an arbitrary system command via a query paramete
 5. On your system, create a file called `exploit.php`, containing a script for fetching the contents of Carlos's secret file. For example:
     
     `<?php echo file_get_contents('/etc/passwd'); ?>`
-1. Use the avatar upload function to upload your malicious PHP file. The message in the response confirms that this was uploaded successfully.
-2. In Burp Repeater or caido replay, change the path of the request to point to your PHP file:
+6. Use the avatar upload function to upload your malicious PHP file. The message in the response confirms that this was uploaded successfully.
+7. In Burp Repeater or caido replay, change the path of the request to point to your PHP file:
     
     `GET /files/avatars/exploit.php HTTP/1.1`
-1. Send the request. Notice that the server has executed your script and returned its output (command output) in the response.
+8. Send the request. Notice that the server has executed your script and returned its output (command output) in the response.
 
 --- 
 
-(S0me another thing will come next, wait for it......) 
-> See you later..........
+## Exploiting flawed validation of file uploads
+
+In the wild, it's unlikely that you'll find a website that has no protection against file upload attacks like we saw in the previous technique. But just because defenses are in place, that doesn't mean that they're robust. You can sometimes still exploit flaws in these mechanisms to obtain a web shell for remote code execution.
+
+--- 
+
+## Flawed file type validation
+
+When submitting HTML forms, the browser typically sends the provided data in a `POST` request with the content type `application/x-www-form-urlencoded`. This is fine for sending simple text like your name or address. However, it isn't suitable for sending large amounts of binary data, such as an entire image file or a PDF document. In this case, the content type `multipart/form-data` is preferred.
+
+--- 
+
+## Flawed file type validation - Continued
+
+Consider a form containing fields for uploading an image, providing a description of it, and entering your username. Submitting such a form might result in a request that looks something like this:
+
+```POST /images HTTP/1.1 Host: normal-website.com Content-Length: 12345 Content-Type: multipart/form-data; boundary=---------------------------012345678901234567890123456 ---------------------------012345678901234567890123456 Content-Disposition: form-data; name="image"; filename="example.jpg" Content-Type: image/jpeg [...binary content of example.jpg...] ---------------------------012345678901234567890123456 Content-Disposition: form-data; name="description" This is an interesting description of my image. ---------------------------012345678901234567890123456 Content-Disposition: form-data; name="username" wiener ---------------------------012345678901234567890123456--
+```
+
+As you can see, the message body is split into separate parts for each of the form's inputs. Each part contains a `Content-Disposition` header, which provides some basic information about the input field it relates to. These individual parts may also contain their own `Content-Type` header, which tells the server the MIME type of the data that was submitted using this input.
+
+---
+
+## Flawed file type validation - Continued
+
+One way that websites may attempt to validate file uploads is to check that this input-specific `Content-Type` header matches an expected MIME type. If the server is only expecting image files, for example, it may only allow types like `image/jpeg` and `image/png`. Problems can arise when the value of this header is implicitly trusted by the server. If no further validation is performed to check whether the contents of the file actually match the supposed MIME type, this defense can be easily bypassed using tools like Burp Repeater or caido replay.
+
+---
+
+## Process Steps:
+
+- Log in and upload an image as your avatar, then go back to your account page.
+- In Burp or caido, go to **Proxy > HTTP history** and notice that your image was fetched using a `GET` request to `/files/avatars/<YOUR-IMAGE>`. Send this request to Burp Repeater.
+- On your system, create a file called `exploit.php`, containing a script for fetching the contents of Carlos's secret. For example:
+    
+    `<?php echo file_get_contents('/etc/passwd'); ?>`
+- Attempt to upload this script as your avatar. The response indicates that you are only allowed to upload files with the MIME type `image/jpeg` or `image/png`.
+- In Burp or caido, go back to the proxy history and find the `POST /my-account/avatar` request that was used to submit the file upload. Send this to Burp Repeater.
+- In Burp Repeater or caido replay, go to the tab containing the `POST /my-account/avatar` request. In the part of the message body related to your file, change the specified `Content-Type` to `image/jpeg`.
+- Send the request. Observe that the response indicates that your file was successfully uploaded.
+- Switch to the other Repeater tab containing the `GET /files/avatars/<YOUR-IMAGE>` request. In the path, replace the name of your image file with `exploit.php` and send the request. Observe that command's output was returned in the response.
+
+--- 
+
+> T0 be continued.............. (^_^)
